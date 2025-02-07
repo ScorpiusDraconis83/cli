@@ -7,7 +7,6 @@ import (
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/client"
-	"github.com/cli/cli/v2/pkg/cmd/project/shared/format"
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
@@ -24,7 +23,7 @@ type editItemOpts struct {
 	fieldID              string
 	projectID            string
 	text                 string
-	number               float32
+	number               float64
 	date                 string
 	singleSelectOptionID string
 	iterationID          string
@@ -124,7 +123,7 @@ func NewCmdEditItem(f *cmdutil.Factory, runF func(config editItemConfig) error) 
 	editItemCmd.Flags().StringVar(&opts.fieldID, "field-id", "", "ID of the field to update")
 	editItemCmd.Flags().StringVar(&opts.projectID, "project-id", "", "ID of the project to which the field belongs to")
 	editItemCmd.Flags().StringVar(&opts.text, "text", "", "Text value for the field")
-	editItemCmd.Flags().Float32Var(&opts.number, "number", 0, "Number value for the field")
+	editItemCmd.Flags().Float64Var(&opts.number, "number", 0, "Number value for the field")
 	editItemCmd.Flags().StringVar(&opts.date, "date", "", "Date value for the field (YYYY-MM-DD)")
 	editItemCmd.Flags().StringVar(&opts.singleSelectOptionID, "single-select-option-id", "", "ID of the single select option value to set on the field")
 	editItemCmd.Flags().StringVar(&opts.iterationID, "iteration-id", "", "ID of the iteration value to set on the field")
@@ -219,22 +218,12 @@ func printDraftIssueResults(config editItemConfig, item queries.DraftIssue) erro
 	return err
 }
 
-func printDraftIssueJSON(config editItemConfig, item queries.DraftIssue) error {
-	projectDraftItemJSON := format.JSONProjectDraftIssue(item)
-	return config.opts.exporter.Write(config.io, projectDraftItemJSON)
-}
-
 func printItemResults(config editItemConfig, item *queries.ProjectItem) error {
 	if !config.io.IsStdoutTTY() {
 		return nil
 	}
 	_, err := fmt.Fprintf(config.io.Out, "Edited item %q\n", item.Title())
 	return err
-}
-
-func printItemJSON(config editItemConfig, item *queries.ProjectItem) error {
-	projectItemJSON := format.JSONProjectItem(*item)
-	return config.opts.exporter.Write(config.io, projectItemJSON)
 }
 
 func clearItemFieldValue(config editItemConfig) error {
@@ -248,7 +237,7 @@ func clearItemFieldValue(config editItemConfig) error {
 	}
 
 	if config.opts.exporter != nil {
-		return printItemJSON(config, &query.Clear.Item)
+		return config.opts.exporter.Write(config.io, &query.Clear.Item)
 	}
 
 	return printItemResults(config, &query.Clear.Item)
@@ -267,7 +256,7 @@ func updateDraftIssue(config editItemConfig) error {
 	}
 
 	if config.opts.exporter != nil {
-		return printDraftIssueJSON(config, query.UpdateProjectV2DraftIssue.DraftIssue)
+		return config.opts.exporter.Write(config.io, query.UpdateProjectV2DraftIssue.DraftIssue)
 	}
 
 	return printDraftIssueResults(config, query.UpdateProjectV2DraftIssue.DraftIssue)
@@ -294,7 +283,7 @@ func updateItemValues(config editItemConfig) error {
 	}
 
 	if config.opts.exporter != nil {
-		return printItemJSON(config, &query.Update.Item)
+		return config.opts.exporter.Write(config.io, &query.Update.Item)
 	}
 
 	return printItemResults(config, &query.Update.Item)

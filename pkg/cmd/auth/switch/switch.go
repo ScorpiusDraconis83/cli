@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	"github.com/MakeNowJust/heredoc"
-	"github.com/cli/cli/v2/internal/config"
+	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/pkg/cmd/auth/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
@@ -15,7 +15,7 @@ import (
 
 type SwitchOptions struct {
 	IO       *iostreams.IOStreams
-	Config   func() (config.Config, error)
+	Config   func() (gh.Config, error)
 	Prompter shared.Prompt
 	Hostname string
 	Username string
@@ -32,18 +32,24 @@ func NewCmdSwitch(f *cmdutil.Factory, runF func(*SwitchOptions) error) *cobra.Co
 		Use:   "switch",
 		Args:  cobra.ExactArgs(0),
 		Short: "Switch active GitHub account",
-		Long: heredoc.Doc(`
+		Long: heredoc.Docf(`
 			Switch the active account for a GitHub host.
 
 			This command changes the authentication configuration that will
 			be used when running commands targeting the specified GitHub host.
-		`),
+
+			If the specified host has two accounts, the active account will be switched
+			automatically. If there are more than two accounts, disambiguation will be
+			required either through the %[1]s--user%[1]s flag or an interactive prompt.
+
+			For a list of authenticated accounts you can run %[1]sgh auth status%[1]s.
+		`, "`"),
 		Example: heredoc.Doc(`
 			# Select what host and account to switch to via a prompt
 			$ gh auth switch
 
-			# Switch to a specific host and specific account
-			$ gh auth logout --hostname enterprise.internal --user monalisa
+			# Switch the active account on a specific host to a specific user
+			$ gh auth switch --hostname enterprise.internal --user monalisa
 		`),
 		RunE: func(c *cobra.Command, args []string) error {
 			if runF != nil {
@@ -122,7 +128,7 @@ func switchRun(opts *SwitchOptions) error {
 		username = candidates[0].user
 	} else if len(candidates) == 2 &&
 		candidates[0].host == candidates[1].host {
-		// If there is a single host with two users, automatically swith to the
+		// If there is a single host with two users, automatically switch to the
 		// inactive user without prompting.
 		hostname = candidates[0].host
 		username = candidates[0].user

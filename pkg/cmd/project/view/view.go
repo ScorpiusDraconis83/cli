@@ -7,7 +7,6 @@ import (
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/client"
-	"github.com/cli/cli/v2/pkg/cmd/project/shared/format"
 	"github.com/cli/cli/v2/pkg/cmd/project/shared/queries"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
@@ -83,18 +82,6 @@ func NewCmdView(f *cmdutil.Factory, runF func(config viewConfig) error) *cobra.C
 }
 
 func runView(config viewConfig) error {
-	if config.opts.web {
-		url, err := buildURL(config)
-		if err != nil {
-			return err
-		}
-
-		if err := config.URLOpener(url); err != nil {
-			return err
-		}
-		return nil
-	}
-
 	canPrompt := config.io.CanPrompt()
 	owner, err := config.client.NewOwner(canPrompt, config.opts.owner)
 	if err != nil {
@@ -106,36 +93,15 @@ func runView(config viewConfig) error {
 		return err
 	}
 
+	if config.opts.web {
+		return config.URLOpener(project.URL)
+	}
+
 	if config.opts.exporter != nil {
-		return printJSON(config, *project)
+		return config.opts.exporter.Write(config.io, *project)
 	}
 
 	return printResults(config, project)
-}
-
-// TODO: support non-github.com hostnames
-func buildURL(config viewConfig) (string, error) {
-	var url string
-	if config.opts.owner == "@me" {
-		owner, err := config.client.ViewerLoginName()
-		if err != nil {
-			return "", err
-		}
-		url = fmt.Sprintf("https://github.com/users/%s/projects/%d", owner, config.opts.number)
-	} else {
-		_, ownerType, err := config.client.OwnerIDAndType(config.opts.owner)
-		if err != nil {
-			return "", err
-		}
-
-		if ownerType == queries.UserOwner {
-			url = fmt.Sprintf("https://github.com/users/%s/projects/%d", config.opts.owner, config.opts.number)
-		} else {
-			url = fmt.Sprintf("https://github.com/orgs/%s/projects/%d", config.opts.owner, config.opts.number)
-		}
-	}
-
-	return url, nil
 }
 
 func printResults(config viewConfig, project *queries.Project) error {
@@ -190,9 +156,4 @@ func printResults(config viewConfig, project *queries.Project) error {
 	}
 	_, err = fmt.Fprint(config.io.Out, out)
 	return err
-}
-
-func printJSON(config viewConfig, project queries.Project) error {
-	projectJSON := format.JSONProject(project)
-	return config.opts.exporter.Write(config.io, projectJSON)
 }

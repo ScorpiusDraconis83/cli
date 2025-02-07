@@ -83,6 +83,15 @@ func AddJSONFlags(cmd *cobra.Command, exportTarget *Exporter, fields []string) {
 		}
 		return e
 	})
+
+	if len(fields) == 0 {
+		return
+	}
+
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations["help:json-fields"] = strings.Join(fields, ",")
 }
 
 func checkJSONFlags(cmd *cobra.Command) (*jsonExporter, error) {
@@ -174,12 +183,16 @@ type jsonExporter struct {
 }
 
 // NewJSONExporter returns an Exporter to emit JSON.
-func NewJSONExporter() Exporter {
+func NewJSONExporter() *jsonExporter {
 	return &jsonExporter{}
 }
 
 func (e *jsonExporter) Fields() []string {
 	return e.fields
+}
+
+func (e *jsonExporter) SetFields(fields []string) {
+	e.fields = fields
 }
 
 // Write serializes data into JSON output written to w. If the object passed as data implements exportable,
@@ -241,7 +254,7 @@ func (e *jsonExporter) exportData(v reflect.Value) interface{} {
 		}
 		return m.Interface()
 	case reflect.Struct:
-		if v.CanAddr() && reflect.PtrTo(v.Type()).Implements(exportableType) {
+		if v.CanAddr() && reflect.PointerTo(v.Type()).Implements(exportableType) {
 			ve := v.Addr().Interface().(exportable)
 			return ve.ExportData(e.fields)
 		} else if v.Type().Implements(exportableType) {
@@ -259,3 +272,35 @@ type exportable interface {
 var exportableType = reflect.TypeOf((*exportable)(nil)).Elem()
 var sliceOfEmptyInterface []interface{}
 var emptyInterfaceType = reflect.TypeOf(sliceOfEmptyInterface).Elem()
+
+// Basic function that can be used with structs that need to implement
+// the exportable interface. It has numerous limitations so verify
+// that it works as expected with the struct and fields you want to export.
+// If it does not, then implementing a custom ExportData method is necessary.
+// Perhaps this should be moved up into exportData for the case when
+// a struct does not implement the exportable interface, but for now it will
+// need to be explicitly used.
+func StructExportData(s interface{}, fields []string) map[string]interface{} {
+	v := reflect.ValueOf(s)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		// If s is not a struct or pointer to a struct return nil.
+		return nil
+	}
+	data := make(map[string]interface{}, len(fields))
+	for _, f := range fields {
+		sf := fieldByName(v, f)
+		if sf.IsValid() && sf.CanInterface() {
+			data[f] = sf.Interface()
+		}
+	}
+	return data
+}
+
+func fieldByName(v reflect.Value, field string) reflect.Value {
+	return v.FieldByNameFunc(func(s string) bool {
+		return strings.EqualFold(field, s)
+	})
+}

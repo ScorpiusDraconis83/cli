@@ -8,8 +8,9 @@ import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/git"
 	"github.com/cli/cli/v2/internal/authflow"
-	"github.com/cli/cli/v2/internal/config"
+	"github.com/cli/cli/v2/internal/gh"
 	"github.com/cli/cli/v2/pkg/cmd/auth/shared"
+	"github.com/cli/cli/v2/pkg/cmd/auth/shared/gitcredentials"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/cli/cli/v2/pkg/set"
@@ -21,7 +22,7 @@ type username string
 
 type RefreshOptions struct {
 	IO         *iostreams.IOStreams
-	Config     func() (config.Config, error)
+	Config     func() (gh.Config, error)
 	HttpClient *http.Client
 	GitClient  *git.Client
 	Prompter   shared.Prompt
@@ -55,7 +56,8 @@ func NewCmdRefresh(f *cmdutil.Factory, runF func(*RefreshOptions) error) *cobra.
 		Use:   "refresh",
 		Args:  cobra.ExactArgs(0),
 		Short: "Refresh stored authentication credentials",
-		Long: heredoc.Docf(`Expand or fix the permission scopes for stored credentials.
+		Long: heredoc.Docf(`
+			Expand or fix the permission scopes for stored credentials for active account.
 
 			The %[1]s--scopes%[1]s flag accepts a comma separated list of scopes you want
 			your gh credentials to have. If no scopes are provided, the command
@@ -67,6 +69,12 @@ func NewCmdRefresh(f *cmdutil.Factory, runF func(*RefreshOptions) error) *cobra.
 
 			The %[1]s--reset-scopes%[1]s flag resets the scopes for your gh credentials to
 			the default set of scopes for your auth flow.
+
+			If you have multiple accounts in %[1]sgh auth status%[1]s and want to refresh the credentials for an
+			inactive account, you will have to use %[1]sgh auth switch%[1]s to that account first before using
+			this command, and then switch back when you are done.
+
+			For more information on OAuth scopes, <https://docs.github.com/en/developers/apps/building-oauth-apps/scopes-for-oauth-apps/>.
 		`, "`"),
 		Example: heredoc.Doc(`
 			$ gh auth refresh --scopes write:org,read:public_key
@@ -169,11 +177,16 @@ func refreshRun(opts *RefreshOptions) error {
 	}
 
 	credentialFlow := &shared.GitCredentialFlow{
-		Executable: opts.MainExecutable,
-		Prompter:   opts.Prompter,
-		GitClient:  opts.GitClient,
+		Prompter: opts.Prompter,
+		HelperConfig: &gitcredentials.HelperConfig{
+			SelfExecutablePath: opts.MainExecutable,
+			GitClient:          opts.GitClient,
+		},
+		Updater: &gitcredentials.Updater{
+			GitClient: opts.GitClient,
+		},
 	}
-	gitProtocol := cfg.GitProtocol(hostname)
+	gitProtocol := cfg.GitProtocol(hostname).Value
 	if opts.Interactive && gitProtocol == "https" {
 		if err := credentialFlow.Prompt(hostname); err != nil {
 			return err
